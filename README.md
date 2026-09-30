@@ -6,6 +6,8 @@ An AI-powered command center for real-estate salespeople drowning in inbound lea
 
 Built for the Masal AI FDE Assignment (Round 2).
 
+**Demo video:** [https://drive.google.com/file/d/1ysUM8dPHFb5GrQYOWb_97F-QSBhzugi6/view?usp=drive_link)  |  **Live app:** [https://masal-lead-intelligence.vercel.app/)
+
 ---
 
 ## The problem
