@@ -1,7 +1,8 @@
 'use client';
 import {useEffect,useMemo,useState} from 'react';
 const STEPS=['Analyzing customer intent…','Identifying buying signals…','Detecting objections…','Preparing next best action…'];
-const D=(name:string,location:string,requirement:string,budget:string,timeline:string,message:string)=>({id:name,name,location,requirement,budget,timeline,message,status:'New',created:Date.now(),log:[{t:Date.now(),e:'Lead received'}],chat:[]});
+let _uid=0;
+const D=(name:string,location:string,requirement:string,budget:string,timeline:string,message:string)=>({id:`${name}-${Date.now()}-${_uid++}`,name,location,requirement,budget,timeline,message,status:'New',created:Date.now(),log:[{t:Date.now(),e:'Lead received'}],chat:[]});
 const DEMO=[
 D('Rahul Verma','Indore','2BHK near Vijay Nagar','₹70L','Within 30 days','Hi, I saw your Vijay Nagar 2BHK listing. Loan is pre-approved up to 70L. My lease ends next month so I need to move fast. Can I visit this Saturday?'),
 D('Priya Nair','Pune','2BHK, Wakad','₹65L','3 months','Honestly 65L is already stretching us. We are first-time buyers and unsure about EMI. Is there any subsidy? Also comparing with another builder in Hinjewadi.'),
@@ -13,6 +14,17 @@ const bd=(l:any)=>l.analysis?.priority||'—';
 export default function Page(){
   const [leads,setLeads]=useState<any[]>([]);const [sel,setSel]=useState<string|null>(null);const [view,setView]=useState('hero');
   const [busy,setBusy]=useState<string|null>(null);const [step,setStep]=useState(0);const [err,setErr]=useState('');
+  const [listening,setListening]=useState(false);
+  const [voiceLang,setVoiceLang]=useState('en-IN');
+  const LANGS=[['en-IN','English'],['hi-IN','हिंदी'],['mr-IN','मराठी'],['gu-IN','ગુજરાતી'],['ta-IN','தமிழ்'],['te-IN','తెలుగు'],['kn-IN','ಕನ್ನಡ'],['bn-IN','বাংলা']];
+  function speak(text:string){if(!text||!('speechSynthesis' in window))return;window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.rate=0.95;u.lang=voiceLang;window.speechSynthesis.speak(u)}
+  function dictate(){const SR:any=(window as any).webkitSpeechRecognition||(window as any).SpeechRecognition;
+    if(!SR){setErr('Voice input needs Chrome or Edge on this device.');return}
+    const r=new SR();r.lang=voiceLang;r.continuous=true;r.interimResults=false;
+    r.onresult=(e:any)=>{let t='';for(let i=e.resultIndex;i<e.results.length;i++)t+=e.results[i][0].transcript+' ';setF((f:any)=>({...f,message:(f.message?f.message+' ':'')+t.trim()}))};
+    r.onend=()=>setListening(false);r.onerror=()=>setListening(false);
+    r.start();setListening(true);(window as any)._rec=r}
+  function stopDictate(){(window as any)._rec?.stop();setListening(false)}
   const [q,setQ]=useState('');const [chatBusy,setChatBusy]=useState(false);const [why,setWhy]=useState('');const [f,setF]=useState<any>({name:'',location:'',requirement:'',budget:'',timeline:'',message:''});
   useEffect(()=>{try{const s=localStorage.getItem('leads');if(s){setLeads(JSON.parse(s));setView('app')}}catch{}},[]);
   useEffect(()=>{if(leads.length)try{localStorage.setItem('leads',JSON.stringify(leads))}catch{}},[leads]);
@@ -48,7 +60,10 @@ export default function Page(){
     {err&&<div role="alert" className="card" style={{margin:16,borderColor:'var(--hot)'}}>{err} <button className="btn g" onClick={()=>setErr('')}>Dismiss</button></div>}
     {view==='add'?<main className="card fade" style={{maxWidth:640,margin:'24px auto'}}><h2 style={{marginTop:0}}>New lead</h2>
       <div className="grid" style={{gridTemplateColumns:'1fr 1fr'}}>{[['name','Name'],['location','Location'],['requirement','Property requirement'],['budget','Budget (e.g. ₹70L)'],['timeline','Buying timeline']].map(([k,p])=><label key={k}><span className="h">{p}</span><input value={f[k]} onChange={e=>setF({...f,[k]:e.target.value})} placeholder={p}/></label>)}</div>
-      <label><span className="h" style={{marginTop:12,display:'block'}}>Customer message / chat transcript ({f.message.length})</span><textarea rows={7} value={f.message} onChange={e=>setF({...f,message:e.target.value})} placeholder="Paste the inquiry or WhatsApp conversation…"/></label>
+      <label><span className="h row" style={{marginTop:12,justifyContent:'space-between'}}>Customer message / chat transcript ({f.message.length})
+        <span className="row" style={{gap:6}}><select aria-label="Voice language" value={voiceLang} onChange={e=>setVoiceLang(e.target.value)} style={{width:110,padding:'2px 6px'}}>{LANGS.map(([c,n])=><option key={c} value={c}>{n}</option>)}</select>
+        <button type="button" className="btn g" style={{padding:'2px 10px'}} onClick={listening?stopDictate:dictate}>{listening?'⏹ Stop dictating':'🎙️ Dictate'}</button></span></span>
+        <textarea rows={7} value={f.message} onChange={e=>setF({...f,message:e.target.value})} placeholder="Paste the inquiry or WhatsApp conversation… or click Dictate to speak it"/></label>
       <div className="row" style={{marginTop:12}}><button className="btn" onClick={submit}>Save & analyze</button><button className="btn g" onClick={()=>setF({...DEMO[0],message:DEMO[0].message})}>Load Demo Lead</button><button className="btn g" onClick={()=>setView(leads.length?'app':'hero')}>Cancel</button></div></main>
     :<div className="app">
       <nav aria-label="Leads" className="card"><p className="h">Leads by priority</p>
@@ -63,7 +78,7 @@ export default function Page(){
           <div className="row" style={{marginTop:8}}><select aria-label="Status" style={{width:140}} value={lead.status} onChange={e=>upd(lead.id,l=>({...log(l,'Status → '+e.target.value),status:e.target.value}))}>{['New','Contacted','Qualified','Follow-up','Converted','Lost'].map(s=><option key={s}>{s}</option>)}</select>
           <select aria-label="Priority" style={{width:110}} value={lead.priority||''} onChange={e=>upd(lead.id,l=>({...log(l,'Priority → '+e.target.value),priority:e.target.value}))}><option value="">Priority</option>{['Hot','Warm','Cold'].map(s=><option key={s}>{s}</option>)}</select>
           <button className="btn g" disabled={!!busy} onClick={()=>analyze(lead)}>{a?'Re-analyze':'Analyze'}</button></div>
-          <p className="m" style={{marginBottom:0}}>“{lead.message}”</p></div>
+          <p className="m" style={{marginBottom:0}}>"{lead.message}"</p></div>
         {busy===lead.id?<div className="card"><b>{STEPS[step]}</b>{[1,2,3,4].map(i=><div key={i} className="sk"/>)}</div>
         :a?<>
           <div className="card"><p className="h">Summary · Intent</p><p style={{margin:'0 0 6px'}}>{a.summary}</p><p className="m" style={{margin:0}}>{a.intent}</p>
@@ -75,17 +90,17 @@ export default function Page(){
           <div className="card"><p className="h">Objection Radar</p>{!a.objections.length&&<span className="m">No friction detected.</span>}
             {a.objections.map((o:any,i:number)=><div key={i} style={{borderTop:i?'1px solid var(--b)':0,padding:'8px 0'}}><div className="row" style={{justifyContent:'space-between'}}><b>{o.type} — {o.severity}</b><span className="m">{o.confidence}% conf.</span></div>
               <div className="bar"><i style={{width:o.confidence+'%',background:o.severity==='High'?'var(--hot)':o.severity==='Medium'?'var(--warm)':'var(--cold)'}}/></div>
-              <div className="m">Evidence: “{o.evidence}”</div><div>→ {o.strategy}</div></div>)}</div>
+              <div className="m">Evidence: "{o.evidence}"</div><div>→ {o.strategy}</div></div>)}</div>
           <div className="card"><p className="h">Lead memory</p><div className="m">Budget {lead.budget} · {lead.location} · {lead.requirement} · {lead.timeline} · Status {lead.status} · {lead.chat.length} chat msgs · Last AI move: {a.nextMove.action}</div>
             <p className="h" style={{marginTop:12}}>Activity</p>{[...lead.log].reverse().map((x:any,i:number)=><div key={i} className="m">{new Date(x.t).toLocaleTimeString()} — {x.e}</div>)}</div>
         </>:<div className="card m">Not analyzed yet. Click Analyze to run the AI.</div>}</div>}</main>
       <aside className="grid" style={{alignContent:'start'}}>{a&&lead&&busy!==lead.id&&<>
-        <div className="card" style={{borderColor:'var(--a)'}}><p className="h">⭐ Next best move</p><h3 style={{margin:'0 0 4px'}}>{a.nextMove.action}</h3><div><b>Do:</b> {a.nextMove.exact}</div><div className="m"><b>Why:</b> {a.nextMove.why}</div>
-          <p className="h" style={{marginTop:10}}>Suggested opening</p><p style={{margin:0}}>{a.nextMove.opening}</p>
+        <div className="card" style={{borderColor:'var(--a)'}}><p className="h row" style={{justifyContent:'space-between'}}>⭐ Next best move <select aria-label="Voice language" value={voiceLang} onChange={e=>setVoiceLang(e.target.value)} style={{width:100,padding:'0 4px'}}>{LANGS.map(([c,n])=><option key={c} value={c}>{n}</option>)}</select></p><h3 style={{margin:'0 0 4px'}}>{a.nextMove.action}</h3><div><b>Do:</b> {a.nextMove.exact}</div><div className="m"><b>Why:</b> {a.nextMove.why}</div>
+          <p className="h row" style={{marginTop:10,justifyContent:'space-between'}}>Suggested opening <button className="btn g" style={{padding:'0 8px'}} onClick={()=>speak(a.nextMove.opening)}>🔊 Listen</button></p><p style={{margin:0}}>{a.nextMove.opening}</p>
           <div className="row" style={{marginTop:10}}><button className="btn" onClick={()=>{upd(lead.id,l=>log(l,'Response used: '+a.nextMove.action));ask('Rewrite this as a WhatsApp message I can send now: '+a.response)}}>Use this response</button>
           <button className="btn g" onClick={()=>{navigator.clipboard.writeText(a.response);upd(lead.id,l=>log(l,'Message copied'))}}>Copy message</button>
           <button className="btn g" disabled={!!busy} onClick={()=>analyze(lead)}>Regenerate</button></div></div>
-        <div className="card"><p className="h">Suggested response</p><p style={{margin:0}}>{a.response}</p></div></>}
+        <div className="card"><p className="h row" style={{justifyContent:'space-between'}}>Suggested response <button className="btn g" style={{padding:'0 8px'}} onClick={()=>speak(a.response)}>🔊 Listen</button></p><p style={{margin:0}}>{a.response}</p></div></>}
         {lead&&<div className="card"><p className="h">Copilot · <span>Grounded in: profile + message + AI analysis</span></p>
           <div className="chat">{lead.chat.map((m:any,i:number)=><p key={i} className={m.role==='user'?'u':''}>{m.role==='user'?'You: ':''}{m.text}</p>)}{chatBusy&&<div className="sk"/>}</div>
           <div className="row" style={{margin:'8px 0'}}>{['What should I emphasize on the call?','Make my reply more assertive','What info is missing?','Give me a 20-second call opening'].map(s=><button key={s} className="btn g" style={{fontSize:12,padding:'2px 8px'}} disabled={chatBusy} onClick={()=>ask(s)}>{s}</button>)}</div>
